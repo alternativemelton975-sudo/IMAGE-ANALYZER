@@ -1,4 +1,4 @@
-from flask import Flask, request, send_file, render_template_string
+from flask import Flask, request, send_file
 from pathlib import Path
 from PIL import Image
 from gtts import gTTS
@@ -39,29 +39,14 @@ def describe_image(image_path):
 
 @app.route("/")
 def home():
-    return render_template_string("""
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>Image To Audio Converter</title>
-    </head>
-    <body>
-        <h1>Image To Audio Converter</h1>
-
-        <form action="/convert" method="post" enctype="multipart/form-data">
-            <input type="file" name="image" required>
-            <button type="submit">Convert To Audio</button>
-        </form>
-    </body>
-    </html>
-    """)
+    return "Image To Audio Converter is running."
 
 
 @app.route("/convert", methods=["POST"])
 def convert():
 
     if "image" not in request.files:
-        return "No file uploaded", 400
+        return "No image uploaded", 400
 
     image_file = request.files["image"]
 
