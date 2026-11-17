@@ -10,8 +10,11 @@ app = Flask(__name__)
 UPLOAD_FOLDER = "uploads"
 AUDIO_FOLDER = "audio"
 
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-os.makedirs(AUDIO_FOLDER, exist_ok=True)
+if not os.path.exists(UPLOAD_FOLDER):
+    os.mkdir(UPLOAD_FOLDER)
+
+if not os.path.exists(AUDIO_FOLDER):
+    os.mkdir(AUDIO_FOLDER)
 
 SUPPORTED_FORMATS = {
     ".jpg",
