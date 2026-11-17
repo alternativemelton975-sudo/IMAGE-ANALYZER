@@ -1,113 +1,62 @@
-from flask import Flask, jsonify, request
 from pathlib import Path
-from datetime import datetime
-import json
-
-app = Flask(__name__)
-
-SUPPORTED_FORMATS = [
-    '.jpg',
-    '.jpeg',
-    '.png',
-    '.gif',
-    '.bmp',
-    '.webp',
-    '.svg',
-    '.tiff'
-]
+from PIL import Image
+from gtts import gTTS
 
 
-def image_to_caption(path: str, style: str = "simple") -> str:
-    image_path = Path(path)
-
-    if not image_path.exists():
-        return "Image file not found."
-
-    captions = {
-        "simple": f"The image '{image_path.name}' was detected successfully.",
-        "poetic": f"A visual masterpiece: {image_path.stem}, captured in {image_path.suffix[1:].upper()}.",
-        "technical": f"File: {image_path.name} | Format: {image_path.suffix.upper()}",
-        "playful": f"Found a {image_path.suffix.upper()} treasure named '{image_path.stem}'!"
-    }
-
-    return captions.get(style, captions["simple"])
+SUPPORTED_FORMATS = {
+    ".jpg",
+    ".jpeg",
+    ".png",
+    ".gif",
+    ".bmp",
+    ".webp",
+    ".tiff"
+}
 
 
-def get_image_details(path: str):
-    image_path = Path(path)
+def describe_image(image_path):
+    image = Image.open(image_path)
+
+    width, height = image.size
+    image_format = image.format
+
+    return (
+        f"This image is a {image_format} image. "
+        f"It is {width} pixels wide and "
+        f"{height} pixels tall."
+    )
+
+
+def image_to_audio(image_path):
+    image_path = Path(image_path)
 
     if not image_path.exists():
-        return {"error": "File not found"}
+        print("Image not found.")
+        return
 
     if image_path.suffix.lower() not in SUPPORTED_FORMATS:
-        return {"error": f"Unsupported format: {image_path.suffix}"}
+        print("Unsupported image format.")
+        return
 
-    stats = image_path.stat()
+    description = describe_image(image_path)
 
-    return {
-        "filename": image_path.name,
-        "format": image_path.suffix[1:].upper(),
-        "size_bytes": stats.st_size,
-        "size_mb": round(stats.st_size / (1024 * 1024), 2),
-        "created": datetime.fromtimestamp(
-            stats.st_ctime
-        ).strftime("%Y-%m-%d %H:%M:%S"),
-        "modified": datetime.fromtimestamp(
-            stats.st_mtime
-        ).strftime("%Y-%m-%d %H:%M:%S")
-    }
+    print("\nDescription:")
+    print(description)
 
+    output_file = f"{image_path.stem}.mp3"
 
-@app.route("/")
-def home():
-    return jsonify({
-        "application": "IMAGE-ANALYZER",
-        "status": "running"
-    })
+    tts = gTTS(text=description, lang="en")
+    tts.save(output_file)
 
-
-@app.route("/formats")
-def formats():
-    return jsonify({
-        "supported_formats": SUPPORTED_FORMATS
-    })
-
-
-@app.route("/caption", methods=["POST"])
-def caption():
-
-    data = request.get_json()
-
-    if not data:
-        return jsonify({"error": "JSON body required"}), 400
-
-    image_path = data.get("path")
-    style = data.get("style", "simple")
-
-    return jsonify({
-        "caption": image_to_caption(image_path, style)
-    })
-
-
-@app.route("/details", methods=["POST"])
-def details():
-
-    data = request.get_json()
-
-    if not data:
-        return jsonify({"error": "JSON body required"}), 400
-
-    image_path = data.get("path")
-
-    return jsonify(get_image_details(image_path))
-
-
-@app.route("/health")
-def health():
-    return jsonify({
-        "status": "healthy"
-    })
+    print(f"\nAudio saved as: {output_file}")
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+
+    print("=== IMAGE TO AUDIO CONVERTER ===\n")
+
+    image_path = input(
+        "Enter image path: "
+    ).strip()
+
+    image_to_audio(image_path)
