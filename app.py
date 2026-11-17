@@ -6,8 +6,14 @@ from datetime import datetime
 app = Flask(__name__)
 
 SUPPORTED_FORMATS = [
-    '.jpg', '.jpeg', '.png', '.gif',
-    '.bmp', '.webp', '.svg', '.tiff'
+    '.jpg',
+    '.jpeg',
+    '.png',
+    '.gif',
+    '.bmp',
+    '.webp',
+    '.svg',
+    '.tiff'
 ]
 
 
@@ -43,8 +49,8 @@ def get_image_details(path: str) -> dict:
         "format": image_path.suffix[1:].upper(),
         "size_bytes": stats.st_size,
         "size_mb": round(stats.st_size / (1024 * 1024), 2),
-        "created": datetime.fromtimestamp(stats.st_ctime).strftime("%Y-%m-%d %H:%M"),
-        "modified": datetime.fromtimestamp(stats.st_mtime).strftime("%Y-%m-%d %H:%M"),
+        "created": datetime.fromtimestamp(stats.st_ctime).strftime("%Y-%m-%d %H:%M:%S"),
+        "modified": datetime.fromtimestamp(stats.st_mtime).strftime("%Y-%m-%d %H:%M:%S")
     }
 
 
@@ -63,8 +69,10 @@ def batch_process_images(directory: str) -> list:
     return sorted(list(set(images)))
 
 
-def generate_image_report(directory: str,
-                          output_file: str = "image_report.json") -> str:
+def generate_image_report(
+    directory: str,
+    output_file: str = "image_report.json"
+) -> str:
 
     images = batch_process_images(directory)
 
@@ -75,7 +83,10 @@ def generate_image_report(directory: str,
         "directory": directory,
         "scan_date": datetime.now().isoformat(),
         "total_images": len(images),
-        "images": [get_image_details(str(img)) for img in images]
+        "images": [
+            get_image_details(str(img))
+            for img in images
+        ]
     }
 
     with open(output_file, "w") as f:
@@ -89,26 +100,35 @@ def home():
     return jsonify({
         "application": "IMAGE-ANALYZER",
         "status": "running",
-        "endpoints": [
-            "/formats",
-            "/caption",
-            "/details",
-            "/report"
-        ]
+        "endpoints": {
+            "GET /": "Application information",
+            "GET /formats": "List supported formats",
+            "POST /caption": "Generate image caption",
+            "POST /details": "Get image details",
+            "POST /report": "Generate directory report"
+        }
     })
 
 
 @app.route("/formats", methods=["GET"])
 def formats():
-    return jsonify({"supported_formats": SUPPORTED_FORMATS})
+    return jsonify({
+        "supported_formats": SUPPORTED_FORMATS
+    })
 
 
 @app.route("/caption", methods=["POST"])
 def caption():
     data = request.get_json()
 
+    if not data:
+        return jsonify({"error": "No JSON payload supplied"}), 400
+
     image_path = data.get("path")
     style = data.get("style", "simple")
+
+    if not image_path:
+        return jsonify({"error": "Path is required"}), 400
 
     return jsonify({
         "caption": image_to_caption(image_path, style)
@@ -118,7 +138,14 @@ def caption():
 @app.route("/details", methods=["POST"])
 def details():
     data = request.get_json()
+
+    if not data:
+        return jsonify({"error": "No JSON payload supplied"}), 400
+
     image_path = data.get("path")
+
+    if not image_path:
+        return jsonify({"error": "Path is required"}), 400
 
     return jsonify(get_image_details(image_path))
 
@@ -126,6 +153,9 @@ def details():
 @app.route("/report", methods=["POST"])
 def report():
     data = request.get_json()
+
+    if not data:
+        return jsonify({"error": "No JSON payload supplied"}), 400
 
     directory = data.get("directory", ".")
 
