@@ -1,168 +1,100 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_file
+from PIL import Image
 from pathlib import Path
-import json
-from datetime import datetime
+from gtts import gTTS
+import os
+import uuid
 
 app = Flask(__name__)
 
-SUPPORTED_FORMATS = [
-    '.jpg',
-    '.jpeg',
-    '.png',
-    '.gif',
-    '.bmp',
-    '.webp',
-    '.svg',
-    '.tiff'
-]
+UPLOAD_FOLDER = "uploads"
+AUDIO_FOLDER = "audio"
+
+Path(UPLOAD_FOLDER).mkdir(exist_ok=True)
+Path(AUDIO_FOLDER).mkdir(exist_ok=True)
+
+SUPPORTED_FORMATS = {
+    ".jpg",
+    ".jpeg",
+    ".png",
+    ".gif",
+    ".bmp",
+    ".webp",
+    ".tiff"
+}
 
 
-def image_to_caption(path: str, style: str = "simple") -> str:
-    image_path = Path(path)
+def create_description(image_path):
+    image = Image.open(image_path)
 
-    if not image_path.exists():
-        return "❌ Image file not found."
+    width, height = image.size
+    image_format = image.format
 
-    captions = {
-        "simple": f"The image '{image_path.name}' was detected successfully.",
-        "poetic": f"A visual masterpiece: {image_path.stem}, captured in {image_path.suffix[1:].upper()}.",
-        "technical": f"File: {image_path.name} | Format: {image_path.suffix.upper()} | Path: {image_path.resolve()}",
-        "playful": f"📸 Found a {image_path.suffix.upper()} treasure named '{image_path.stem}'!"
-    }
-
-    return captions.get(style, captions["simple"])
-
-
-def get_image_details(path: str) -> dict:
-    image_path = Path(path)
-
-    if not image_path.exists():
-        return {"error": "File not found"}
-
-    if image_path.suffix.lower() not in SUPPORTED_FORMATS:
-        return {"error": f"Unsupported format: {image_path.suffix}"}
-
-    stats = image_path.stat()
-
-    return {
-        "filename": image_path.name,
-        "format": image_path.suffix[1:].upper(),
-        "size_bytes": stats.st_size,
-        "size_mb": round(stats.st_size / (1024 * 1024), 2),
-        "created": datetime.fromtimestamp(stats.st_ctime).strftime("%Y-%m-%d %H:%M:%S"),
-        "modified": datetime.fromtimestamp(stats.st_mtime).strftime("%Y-%m-%d %H:%M:%S")
-    }
-
-
-def batch_process_images(directory: str) -> list:
-    dir_path = Path(directory)
-
-    if not dir_path.exists() or not dir_path.is_dir():
-        return []
-
-    images = []
-
-    for ext in SUPPORTED_FORMATS:
-        images.extend(dir_path.glob(f"*{ext}"))
-        images.extend(dir_path.glob(f"*{ext.upper()}"))
-
-    return sorted(list(set(images)))
-
-
-def generate_image_report(
-    directory: str,
-    output_file: str = "image_report.json"
-) -> str:
-
-    images = batch_process_images(directory)
-
-    if not images:
-        return f"❌ No images found in {directory}"
-
-    report = {
-        "directory": directory,
-        "scan_date": datetime.now().isoformat(),
-        "total_images": len(images),
-        "images": [
-            get_image_details(str(img))
-            for img in images
-        ]
-    }
-
-    with open(output_file, "w") as f:
-        json.dump(report, f, indent=2)
-
-    return f"✅ Report generated: {output_file}"
+    return (
+        f"This image is in {image_format} format. "
+        f"It has a width of {width} pixels and a height of {height} pixels."
+    )
 
 
 @app.route("/")
 def home():
+    return """
+    <h1>IMAGE TO AUDIO CONVERTER</h1>
+    <p>Upload an image and receive an audio description.</p>
+
+    <form action="/convert" method="post" enctype="multipart/form-data">
+        <input type="file" name="image">
+        <button type="submit">Convert</button>
+    </form>
+    """
+
+
+@app.route("/convert", methods=["POST"])
+def convert_image():
+
+    if "image" not in request.files:
+        return jsonify({"error": "No image uploaded"}), 400
+
+    image_file = request.files["image"]
+
+    if image_file.filename == "":
+        return jsonify({"error": "No file selected"}), 400
+
+    extension = Path(image_file.filename).suffix.lower()
+
+    if extension not in SUPPORTED_FORMATS:
+        return jsonify({"error": "Unsupported image format"}), 400
+
+    unique_id = str(uuid.uuid4())
+
+    image_path = os.path.join(
+        UPLOAD_FOLDER,
+        f"{unique_id}{extension}"
+    )
+
+    image_file.save(image_path)
+
+    description = create_description(image_path)
+
+    audio_path = os.path.join(
+        AUDIO_FOLDER,
+        f"{unique_id}.mp3"
+    )
+
+    tts = gTTS(description)
+    tts.save(audio_path)
+
+    return send_file(
+        audio_path,
+        as_attachment=True,
+        download_name="image_description.mp3"
+    )
+
+
+@app.route("/health")
+def health():
     return jsonify({
-        "application": "IMAGE-ANALYZER",
-        "status": "running",
-        "endpoints": {
-            "GET /": "Application information",
-            "GET /formats": "List supported formats",
-            "POST /caption": "Generate image caption",
-            "POST /details": "Get image details",
-            "POST /report": "Generate directory report"
-        }
-    })
-
-
-@app.route("/formats", methods=["GET"])
-def formats():
-    return jsonify({
-        "supported_formats": SUPPORTED_FORMATS
-    })
-
-
-@app.route("/caption", methods=["POST"])
-def caption():
-    data = request.get_json()
-
-    if not data:
-        return jsonify({"error": "No JSON payload supplied"}), 400
-
-    image_path = data.get("path")
-    style = data.get("style", "simple")
-
-    if not image_path:
-        return jsonify({"error": "Path is required"}), 400
-
-    return jsonify({
-        "caption": image_to_caption(image_path, style)
-    })
-
-
-@app.route("/details", methods=["POST"])
-def details():
-    data = request.get_json()
-
-    if not data:
-        return jsonify({"error": "No JSON payload supplied"}), 400
-
-    image_path = data.get("path")
-
-    if not image_path:
-        return jsonify({"error": "Path is required"}), 400
-
-    return jsonify(get_image_details(image_path))
-
-
-@app.route("/report", methods=["POST"])
-def report():
-    data = request.get_json()
-
-    if not data:
-        return jsonify({"error": "No JSON payload supplied"}), 400
-
-    directory = data.get("directory", ".")
-
-    result = generate_image_report(directory)
-
-    return jsonify({
-        "result": result
+        "status": "healthy"
     })
 
 
