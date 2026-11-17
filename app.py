@@ -1,7 +1,17 @@
+from flask import Flask, request, send_file, render_template_string
 from pathlib import Path
 from PIL import Image
 from gtts import gTTS
+import uuid
+import os
 
+app = Flask(__name__)
+
+UPLOAD_FOLDER = "uploads"
+AUDIO_FOLDER = "audio"
+
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+os.makedirs(AUDIO_FOLDER, exist_ok=True)
 
 SUPPORTED_FORMATS = {
     ".jpg",
@@ -27,36 +37,67 @@ def describe_image(image_path):
     )
 
 
-def image_to_audio(image_path):
-    image_path = Path(image_path)
+@app.route("/")
+def home():
+    return render_template_string("""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Image To Audio Converter</title>
+    </head>
+    <body>
+        <h1>Image To Audio Converter</h1>
 
-    if not image_path.exists():
-        print("Image not found.")
-        return
+        <form action="/convert" method="post" enctype="multipart/form-data">
+            <input type="file" name="image" required>
+            <button type="submit">Convert To Audio</button>
+        </form>
+    </body>
+    </html>
+    """)
 
-    if image_path.suffix.lower() not in SUPPORTED_FORMATS:
-        print("Unsupported image format.")
-        return
+
+@app.route("/convert", methods=["POST"])
+def convert():
+
+    if "image" not in request.files:
+        return "No file uploaded", 400
+
+    image_file = request.files["image"]
+
+    if image_file.filename == "":
+        return "No file selected", 400
+
+    extension = Path(image_file.filename).suffix.lower()
+
+    if extension not in SUPPORTED_FORMATS:
+        return "Unsupported image format", 400
+
+    unique_id = str(uuid.uuid4())
+
+    image_path = os.path.join(
+        UPLOAD_FOLDER,
+        f"{unique_id}{extension}"
+    )
+
+    image_file.save(image_path)
 
     description = describe_image(image_path)
 
-    print("\nDescription:")
-    print(description)
-
-    output_file = f"{image_path.stem}.mp3"
+    audio_path = os.path.join(
+        AUDIO_FOLDER,
+        f"{unique_id}.mp3"
+    )
 
     tts = gTTS(text=description, lang="en")
-    tts.save(output_file)
+    tts.save(audio_path)
 
-    print(f"\nAudio saved as: {output_file}")
+    return send_file(
+        audio_path,
+        as_attachment=True,
+        download_name="image_description.mp3"
+    )
 
 
 if __name__ == "__main__":
-
-    print("=== IMAGE TO AUDIO CONVERTER ===\n")
-
-    image_path = input(
-        "Enter image path: "
-    ).strip()
-
-    image_to_audio(image_path)
+    app.run(host="0.0.0.0", port=5000)
